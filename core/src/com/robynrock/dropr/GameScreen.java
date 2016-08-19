@@ -6,7 +6,6 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -27,533 +26,391 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.physics.box2d.joints.MouseJoint;
 import com.badlogic.gdx.physics.box2d.joints.MouseJointDef;
 import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.viewport.ExtendViewport;
-
 import java.util.HashMap;
 
 
 public class GameScreen extends InputAdapter implements Screen {
-	final dropr game;
-	final HashMap<String, Sprite> pegSprites = new HashMap<String, Sprite>();
+    final dropr game;
+    final HashMap<String, Sprite> pegSprites = new HashMap<String, Sprite>();
 
-	static final float STEP_TIME = 1f / 60f;
-	static final int VELOCITY_ITERATIONS = 6;
-	static final int POSITION_ITERATIONS = 2;
-	static final int COUNT = 20;
+    static final float STEP_TIME = 1f / 60f;
+    static final int VELOCITY_ITERATIONS = 6;
+    static final int POSITION_ITERATIONS = 2;
+    static final int COUNT =39;
 
-	boolean colliding = false;
+    Array<Body> bodiesForDeletion = new Array<Body>();
+    Array<Body> newDisc = new Array<Body>();
+    Body pegBodies[] = new Body[COUNT];
 
-	Array<Body> bodiesForDeletion = new Array<Body>();
-	Array<Body> newDisc = new Array<Body>();
-	Body pegBodies[] = new Body[COUNT];
 
+    float accumulator = 0;
 
-	float accumulator = 0;
+    Body floor, platform, tmpPlatform, disc, tmpDisc, wallL, wallR, winSensor, pitL, pitR;
+    Box2DDebugRenderer debugRenderer;
+    OrthographicCamera camera;
+    TextureAtlas textureAtlas;
+    World world;
 
-	Body tmpFloor, floor, initPlatform, platform, tmpPlatform, disc, tmpDisc, wallL, wallR, winSensor, tmpWinSensor, pitL, pitR;
-	Box2DDebugRenderer debugRenderer;
-	ExtendViewport viewport;
-	OrthographicCamera camera;
-	SpriteBatch batch;
-	TextureAtlas textureAtlas;
-	World world;
+    Vector2 worldGravity = new Vector2();
+    Vector2 centerScreen = new Vector2();
 
-	Vector2 worldGravity = new Vector2();
-	Vector2 centerScreen = new Vector2();
+    String TAG = "MouseJoint";
+    private Vector3 tmp = new Vector3();
+    private Vector2 tmp2 = new Vector2();
 
-	String TAG = "MouseJoint";
-	private Vector3 tmp = new Vector3();
-	private Vector2 tmp2 = new Vector2();
+    private MouseJointDef mouseJointDef;
+    private MouseJoint joint;
 
-	private MouseJointDef mouseJointDef;
-	private MouseJoint joint;
+    public GameScreen(final dropr gam) {
+        this.game = gam;
+        worldGravity.set(0, -300);
 
-	public GameScreen(final dropr gam) {
-		this.game = gam;
+        //instantiating the box2D world and Renderer.
+        Box2D.init();
+        world = new World(worldGravity, true);
+        debugRenderer = new Box2DDebugRenderer();
 
-		worldGravity.set(0, -220);
+        world.setContactListener(new ContactListener() {
 
-		//instantiating the box2D world and Renderer.
-		Box2D.init();
-		world = new World(worldGravity, true);
-		debugRenderer = new Box2DDebugRenderer();
+            @Override
+            public void beginContact(Contact contact) {
 
-		world.setContactListener(new ContactListener() {
+                Body fixtureA = contact.getFixtureA().getBody();
+                Body fixtureB = contact.getFixtureB().getBody();
 
-			@Override
-			public void beginContact(Contact contact) {
+                // if the disc and the floor collide.
+                if ((fixtureA.getUserData() == disc.getUserData() && fixtureB.getUserData() == floor.getUserData()) || (fixtureA.getUserData() == floor.getUserData() && fixtureB.getUserData() == disc.getUserData())) {
+                    newDisc.add(tmpDisc);
+                    newDisc.add(tmpPlatform);
+                    bodiesForDeletion.add(disc);    // destroy the current disk
+                }
 
-				Body fixtureA = contact.getFixtureA().getBody();
-				Body fixtureB = contact.getFixtureB().getBody();
+                // if contact is detected between disc and WinSensor
+                if (fixtureA.getUserData() == winSensor.getUserData() && fixtureB.getUserData() == disc.getUserData()) {
 
-				// if the disc and the floor collide.
-				if ((fixtureA.getUserData() == disc.getUserData() && fixtureB.getUserData() == floor.getUserData()) || (fixtureA.getUserData() == floor.getUserData() && fixtureB.getUserData() == disc.getUserData())) {
-					newDisc.add(tmpDisc);
-					newDisc.add(tmpPlatform);
-					bodiesForDeletion.add(disc);    // destroy the current disk
-				}
+                    Gdx.app.log("WIN_CONDITION", "You won!"); //print win Message to the console;
 
-				// if contact is detected between disc and WinSensor
-				if (fixtureA.getUserData() == winSensor.getUserData() && fixtureB.getUserData() == disc.getUserData()) {
+                    //TODO: Create alert Box to notify user that they have won the game!
+                }
 
-					Gdx.app.log("WIN_CONDITION", "You won!"); //print win Message to the console;
+                Gdx.app.log("beginContact", "between " + contact.getFixtureA().getBody().getUserData() + " and " + contact.getFixtureB().getBody().getUserData() + ".");
+            }
 
-					//TODO: Create alert Box to notify user that they have won the game!
-				}
+            @Override
+            public void endContact(Contact contact) {
+                Gdx.app.log("endContact", "between " + contact.getFixtureA().getBody().getUserData() + " and " + contact.getFixtureB().getBody().getUserData() + ".");
+            }
 
-				Gdx.app.log("beginContact", "between " + contact.getFixtureA().getBody().getUserData() + " and " + contact.getFixtureB().getBody().getUserData() + ".");
-			}
+            @Override
+            public void postSolve(Contact arg0, ContactImpulse arg1) {
+                // TODO Auto-generated method stub
+            }
 
-			@Override
-			public void endContact(Contact contact) {
+            @Override
+            public void preSolve(Contact arg0, Manifold arg1) {
+                // TODO Auto-generated method stub
+            }
+        });
 
-				Body fixtureA = contact.getFixtureA().getBody();
-				Body fixtureB = contact.getFixtureB().getBody();
+        // instantiating the camera and viewport.
+        camera = new OrthographicCamera();
+        camera.setToOrtho(false, Gdx.graphics.getWidth() / 5, Gdx.graphics.getHeight() / 5);
 
-				Gdx.app.log("endContact", "between " + contact.getFixtureA().getBody().getUserData() + " and " + contact.getFixtureB().getBody().getUserData() + ".");
-			}
+        // instantiating bodies to create the GameWorlds.
+        disc = createCircleBody("disc", 15, .5f, 1f, .001f, camera.viewportWidth / 2, 450, 0, false);
 
-			@Override
-			public void postSolve(Contact arg0, ContactImpulse arg1) {
-				// TODO Auto-generated method stub
-			}
+        floor = createRectangleBody("floor", camera.viewportWidth, 1, 0, 0, 0, 1, false);
 
-			@Override
-			public void preSolve(Contact arg0, Manifold arg1) {
-				// TODO Auto-generated method stub
-			}
-		});
+        platform = createRectangleBody("platform", camera.viewportWidth, 1, 0, 425, 0, 0, false);
+        winSensor = createRectangleBody("WinCondition", camera.viewportWidth / 10, 10, camera.viewportWidth / 2, 0, 0, 0, true);
 
-		// instantiating the camera and viewport.
-		camera = new OrthographicCamera();
-		camera.setToOrtho(false, Gdx.graphics.getWidth() / 5, Gdx.graphics.getHeight() / 5);
+        pitL = createRectangleBody("PitWallLeft", 1, 35, camera.viewportWidth / 2 - (camera.viewportWidth / 10) - 2, 0, 0, 0, false);
+        pitR = createRectangleBody("PitWallRight", 1, 35, camera.viewportWidth / 2 + (camera.viewportWidth / 10) + 2, 0, 0, 0, false);
 
-		//instantiating the disc, ground, and start platform.
-		disc = createCircleBody("Circle", 20, camera.viewportWidth / 2, 450, 0);
-		disc.setUserData("disc");
+        wallL = createRectangleBody("LeftWall", 1, camera.viewportHeight, 0, 0, 0, 0, false);
+        wallR = createRectangleBody("RightWall", 1, camera.viewportHeight, camera.viewportWidth, 0, 0, 0, false);
 
-		floor = createGround(tmpFloor);
-		floor.setUserData("floor");
-
-		platform = createPlatform("platform", initPlatform);
-
-		winSensor = createWinSensor(tmpWinSensor);
-		winSensor.setUserData("winSensor");
-
-		createPitL();
-		createPitR();
-
-
-		centerScreen.set(camera.viewportWidth / 2, camera.viewportHeight / 2);
-
-		//generate the array of Pegs
-
-		generatePegs();
-
-		Body peg1 = pegBodies[0];
-		Body peg2 = pegBodies[1];
-		Body peg3 = pegBodies[2];
-		Body peg4 = pegBodies[3];
-		Body peg5 = pegBodies[4];
-		Body peg6 = pegBodies[5];
-		Body peg7 = pegBodies[6];
-		Body peg8 = pegBodies[7];
-		Body peg9 = pegBodies[8];
-		Body peg10 = pegBodies[9];
-		Body peg11 = pegBodies[10];
-		Body peg12 = pegBodies[11];
-		Body peg13 = pegBodies[12];
-		Body peg14 = pegBodies[13];
-		Body peg15 = pegBodies[14];
-		Body peg16 = pegBodies[15];
-		Body peg17 = pegBodies[16];
-		Body peg18 = pegBodies[17];
 
+        // mouse joint
+        mouseJointDef = new MouseJointDef();
+        mouseJointDef.bodyA = floor;
+        mouseJointDef.collideConnected = true;
+        mouseJointDef.frequencyHz = 3000;
+        mouseJointDef.maxForce = 600;
+
+        centerScreen.set(camera.viewportWidth / 2, camera.viewportHeight / 2);
+
+        //generate the array of Pegs
+
+        generatePegs();
+
+
+        // create -5 row of pegs
+        pegBodies[1].setTransform(camera.viewportWidth / 2 - 125, 150, 0);
+        pegBodies[2].setTransform(camera.viewportWidth / 2 - 125, 250, 0);
+        pegBodies[3].setTransform(camera.viewportWidth / 2 - 125, 350, 0);
+
+        // create -4 row of pegs
+        pegBodies[4].setTransform(camera.viewportWidth / 2 - 100, 100, 0);
+        pegBodies[5].setTransform(camera.viewportWidth / 2 - 100, 200, 0);
+        pegBodies[6].setTransform(camera.viewportWidth / 2 - 100, 300, 0);
+        pegBodies[7].setTransform(camera.viewportWidth / 2 - 100, 400, 0);
+
+        // create -3 row of pegs
+        pegBodies[8].setTransform(camera.viewportWidth / 2 - 75, 150, 0);
+        pegBodies[9].setTransform(camera.viewportWidth / 2 - 75, 250, 0);
+        pegBodies[10].setTransform(camera.viewportWidth / 2 - 75, 350, 0);
+
+        // create -2 row of pegs
+        pegBodies[11].setTransform(camera.viewportWidth / 2 - 50, 100, 0);
+        pegBodies[12].setTransform(camera.viewportWidth / 2 - 50, 200, 0);
+        pegBodies[13].setTransform(camera.viewportWidth / 2 - 50, 300, 0);
+        pegBodies[14].setTransform(camera.viewportWidth / 2 - 50, 400, 0);
 
-		// create first row of pegs
-		peg1.setTransform(40, 100, 0);
-		peg2.setTransform(40, 200, 0);
-		peg3.setTransform(40, 300, 0);
-		peg4.setTransform(40, 400, 0);
+        //create -1 row of pegs
+        pegBodies[15].setTransform(camera.viewportWidth / 2 - 25, 150, 0);
+        pegBodies[16].setTransform(camera.viewportWidth / 2 - 25, 250, 0);
+        pegBodies[17].setTransform(camera.viewportWidth / 2 - 25, 350, 0);
+
+        //create center Row of Pegs
+        pegBodies[18].setTransform(camera.viewportWidth / 2, 100, 0);
+        pegBodies[19].setTransform(camera.viewportWidth / 2, 200, 0);
+        pegBodies[20].setTransform(camera.viewportWidth / 2, 300, 0);
+        pegBodies[21].setTransform(camera.viewportWidth / 2, 400, 0);
 
-		//create second row of pegs
-		peg5.setTransform(90, 150, 0);
-		peg6.setTransform(90, 250, 0);
-		peg7.setTransform(90, 350, 0);
+        //create +1 row of pegs
+        pegBodies[22].setTransform(camera.viewportWidth / 2 + 25, 150, 0);
+        pegBodies[23].setTransform(camera.viewportWidth / 2 + 25, 250, 0);
+        pegBodies[24].setTransform(camera.viewportWidth / 2 + 25, 350, 0);
 
-		//create third Row of Pegs
-		peg8.setTransform(camera.viewportWidth / 2, 100, 0);
-		peg9.setTransform(camera.viewportWidth / 2, 200, 0);
-		peg10.setTransform(camera.viewportWidth / 2, 300, 0);
-		peg11.setTransform(camera.viewportWidth / 2, 400, 0);
+        //create +2 Row of Pegs
+        pegBodies[25].setTransform(camera.viewportWidth / 2 + 50, 100, 0);
+        pegBodies[26].setTransform(camera.viewportWidth / 2 + 50, 200, 0);
+        pegBodies[27].setTransform(camera.viewportWidth / 2 + 50, 300, 0);
+        pegBodies[28].setTransform(camera.viewportWidth / 2 + 50, 400, 0);
 
-		//create fourth row of pegs
-		peg12.setTransform(200, 150, 0);
-		peg13.setTransform(200, 250, 0);
-		peg14.setTransform(200, 350, 0);
+        // create +3 Row of pegs
+        pegBodies[29].setTransform(camera.viewportWidth / 2 + 75, 150, 0);
+        pegBodies[30].setTransform(camera.viewportWidth / 2 + 75, 250, 0);
+        pegBodies[31].setTransform(camera.viewportWidth / 2 + 75, 350, 0);
 
-		//create final Row of Pegs
-		peg15.setTransform(250, 100, 0);
-		peg16.setTransform(250, 200, 0);
-		peg17.setTransform(250, 300, 0);
-		peg18.setTransform(250, 400, 0);
+        // create +4 row of pegs
+        pegBodies[32].setTransform(camera.viewportWidth / 2 + 100, 100, 0);
+        pegBodies[33].setTransform(camera.viewportWidth / 2 + 100, 200, 0);
+        pegBodies[34].setTransform(camera.viewportWidth / 2 + 100, 300, 0);
+        pegBodies[35].setTransform(camera.viewportWidth / 2 + 100, 400, 0);
+
+        // create +5 row of pegs
+        pegBodies[36].setTransform(camera.viewportWidth / 2 + 125, 150, 0);
+        pegBodies[37].setTransform(camera.viewportWidth / 2 + 125, 250, 0);
+        pegBodies[38].setTransform(camera.viewportWidth / 2 + 125, 350, 0);
+
+        // setting the input Processor for the mouseJoint
+        Gdx.input.setInputProcessor(this);
+    }
 
-		// setting the input Processor for the mouseJoint
-		Gdx.input.setInputProcessor(this);
-	}
 
+    /**
+     * - - - - - - - - - - - - - - -
+     * <p>
+     * User created Methods Section
+     * <p>
+     * * - - - - - - - - - - - - - -
+     */
+
+    protected void stepWorld() {
+        float delta = Gdx.graphics.getDeltaTime();
+        accumulator += Math.min(delta, 0.25f);
 
-	/**
-	 * - - - - - - - - - - - - - - -
-	 * <p>
-	 * User created Methods Section
-	 * <p>
-	 * * - - - - - - - - - - - - - -
-	 */
+        if (accumulator >= STEP_TIME) {
+            accumulator -= STEP_TIME;
 
-	protected void stepWorld() {
-		float delta = Gdx.graphics.getDeltaTime();
-		accumulator += Math.min(delta, 0.25f);
+            world.step(STEP_TIME, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
+        }
+    }
 
-		if (accumulator >= STEP_TIME) {
-			accumulator -= STEP_TIME;
+    protected Body createCircleBody(String name, float radius, float restitution, float friction, float density, float x, float y, float rotation, boolean isStatic) {
+        BodyDef bodyDef = new BodyDef();
 
-			world.step(STEP_TIME, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
-		}
-	}
+        if(isStatic) {
+            bodyDef.type = BodyDef.BodyType.StaticBody;
+        } else {
+            bodyDef.type = BodyDef.BodyType.DynamicBody;
+        }
 
-	protected Body createCircleBody(String name, float radius, float x, float y, float rotation) {
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.DynamicBody;
+        CircleShape shape = new CircleShape();
+        shape.setRadius(radius);
 
-		CircleShape shape = new CircleShape();
-		shape.setRadius(radius);
+        FixtureDef fixtureDef = new FixtureDef();
+        fixtureDef.restitution = restitution;
+        fixtureDef.friction = friction;
+        fixtureDef.shape = shape;
+        fixtureDef.density = density;
 
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.restitution = .5f;
-		fixtureDef.friction = 1;
-		fixtureDef.shape = shape;
+        Body circle = world.createBody(bodyDef);
+        circle.createFixture(fixtureDef);
+        circle.setTransform(x, y, rotation);
+        circle.setUserData(name);
 
-		Body circle = world.createBody(bodyDef);
-		circle.createFixture(fixtureDef);
-		circle.setTransform(x, y, rotation);
-		circle.setUserData(name);
+        return circle;
 
-		return circle;
+    }
 
-	}
+    protected Body createRectangleBody(String name, float hx, float hy, float x, float y, float z, float friction, boolean sensor) {
 
-	protected Body createPegBody(String name, float radius, float x, float y, float rotation) {
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body rectangle;
 
-		CircleShape shape = new CircleShape();
-		shape.setRadius(radius);
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
 
-		FixtureDef discDef = new FixtureDef();
-		discDef.restitution = 1f;
-		discDef.friction = 0;
-		discDef.shape = shape;
+        PolygonShape shape = new PolygonShape();
+        shape.setAsBox(hx, hy);
 
-		Body circle = world.createBody(bodyDef);
-		circle.createFixture(discDef);
-		circle.setTransform(x, y, rotation);
+        FixtureDef fixtureDef = new FixtureDef();
+        fixtureDef.friction = friction;
+        fixtureDef.shape = shape;
 
-		return circle;
+        if(sensor) fixtureDef.isSensor = true;
 
-	}
+        rectangle = world.createBody(bodyDef);
+        rectangle.createFixture(fixtureDef);
+        rectangle.setTransform(x, y, z);
+        rectangle.setUserData(name);
 
-	protected Body createGround(Body body) {
-		if (tmpFloor != null) world.destroyBody(tmpFloor);
+        shape.dispose();
 
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+        return rectangle;
+    }
 
-		FixtureDef groundDef = new FixtureDef();
-		groundDef.friction = 1;
+    private void generatePegs() {
 
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(camera.viewportWidth, 1);
+        for (int i = 0; i < pegBodies.length; i++) {
+            String name = "peg" + i;
+            pegBodies[i] = createCircleBody(name, 5, .5f, .1f, 0, -50, 0, 0, true);
+            pegBodies[i].setUserData("peg");
+        }
+    }
 
-		groundDef.shape = shape;
 
-		body = world.createBody(bodyDef);
-		body.createFixture(groundDef);
-		body.setTransform(0, 0, 0);
-		body.setUserData(this);
+    /**
+     * - - - - - - - - - - - -
+     * <p>
+     * Render section
+     * <p>
+     * * - - - - - - - - - - - -
+     */
 
-		shape.dispose();
+    public void render(float delta) {
+        stepWorld();
+        Gdx.gl.glClearColor(0, 0, 0, 1);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-		return body;
-	}
+        debugRenderer.render(world, camera.combined);
 
-	protected Body createWinSensor(Body body) {
-		if (tmpFloor != null) world.destroyBody(tmpFloor);
+        if (bodiesForDeletion.size > 0) {
+            System.out.println("Bodies ready for deletion!");
+            world.destroyBody(bodiesForDeletion.first());
+            bodiesForDeletion.clear();
+        }
 
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+        if (newDisc.size > 1) {
+            disc = createCircleBody("disc", 15, .5f, 1f, .001f, camera.viewportWidth / 2, 450, 0, false);
+            platform = createRectangleBody("platform", camera.viewportWidth, 1, 0, 425, 0, 0, false);
+            newDisc.clear();
+        }
 
-		FixtureDef groundDef = new FixtureDef();
-		groundDef.friction = 0;
-		groundDef.isSensor = true;
+    }
 
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(camera.viewportWidth / 10, 10);
+    @Override
+    public void resize(int width, int height) {
 
-		groundDef.shape = shape;
 
-		body = world.createBody(bodyDef);
-		body.createFixture(groundDef);
-		body.setTransform(camera.viewportWidth / 2, 1, 0);
-		body.setUserData("ground");
+    }
 
-		shape.dispose();
+    @Override
+    public void show() {
+        //TODO: Auto-Generated Method Stub
 
-		return body;
-	}
+    }
 
-	protected Body createPlatform(String name, Body body) {
+    @Override
+    public void hide() {
+        //TODO: Auto-Generated Method Stub
 
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+    }
 
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.friction = 1;
+    @Override
+    public void pause() {
+        //TODO: Auto-Generated Method Stub
 
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(camera.viewportWidth, 1);
+    }
 
-		fixtureDef.shape = shape;
+    @Override
+    public void resume() {
+        //TODO: Auto-Generated Method Stub
 
-		body = world.createBody(bodyDef);
-		body.createFixture(fixtureDef);
-		body.setTransform(0, 425, 0);
-		body.setUserData(name);
+    }
 
-		shape.dispose();
+    @Override
+    public void dispose() {
+        //TODO: Auto-Generated Method Stub
+    }
 
-		return body;
-	}
+    /**
+     * - - - - - - - - - - - - - - - - -
+     * <p>
+     * input processor for mouseJoint
+     * <p>
+     * * - - - - - - - - - - - - - - - - -
+     */
 
+    QueryCallback queryCallBack = new QueryCallback() {
+        @Override
+        public boolean reportFixture(Fixture fixture) {
+            if (!fixture.testPoint(tmp.x, tmp.y)) {
+                return true;
+            }
 
-	protected void createWallR() {
+            mouseJointDef.bodyB = fixture.getBody();
+            mouseJointDef.target.set(tmp.x, tmp.y);
+            joint = (MouseJoint) world.createJoint(mouseJointDef);
+            return false;
+        }
+    };
 
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+    @Override
+    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        Gdx.app.log(TAG, "touchDown Detected at: " + screenX + ", " + screenY);
 
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.friction = 0;
+        camera.unproject(tmp.set(screenX, screenY, 0));
+        world.QueryAABB(queryCallBack, tmp.x, tmp.y, tmp.x, tmp.y);
 
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(1, camera.viewportHeight);
+        worldGravity.set(0, -120);
 
-		fixtureDef.shape = shape;
+        return false;
+    }
 
-		wallR = world.createBody(bodyDef);
-		wallR.createFixture(fixtureDef);
-		wallR.setTransform(camera.viewportWidth, 0, 0);
+    @Override
+    public boolean touchDragged(int screenX, int screenY, int pointer) {
+        Gdx.app.log(TAG, "touchDrag Detected at: " + screenX + ", " + screenY);
 
-		shape.dispose();
-	}
+        if (joint == null)
+            return true;
 
-	protected void createPitL() {
+        camera.unproject(tmp.set(screenX, screenY, 0));
+        joint.setTarget(tmp2.set(tmp.x, tmp.y));
 
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
+        return true;
+    }
 
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.friction = 0;
-
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(1, 35);
-
-		fixtureDef.shape = shape;
-
-		pitL = world.createBody(bodyDef);
-		pitL.createFixture(fixtureDef);
-		pitL.setTransform((camera.viewportWidth / 2 - camera.viewportWidth / 10) - 2, 0, 0);
-
-	}
-
-	protected void createPitR() {
-
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
-
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.friction = 0;
-
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(1, 35);
-
-		fixtureDef.shape = shape;
-
-		pitR = world.createBody(bodyDef);
-		pitR.createFixture(fixtureDef);
-		pitR.setTransform((camera.viewportWidth / 2) + (camera.viewportWidth / 10), 0, 0);
-
-	}
-
-	protected void createWallL() {
-
-		BodyDef bodyDef = new BodyDef();
-		bodyDef.type = BodyDef.BodyType.StaticBody;
-
-		FixtureDef fixtureDef = new FixtureDef();
-		fixtureDef.friction = 0;
-
-		PolygonShape shape = new PolygonShape();
-		shape.setAsBox(1, camera.viewportHeight);
-
-		fixtureDef.shape = shape;
-
-		wallL = world.createBody(bodyDef);
-		wallL.createFixture(fixtureDef);
-		wallL.setTransform(0, 0, 0);
-
-		shape.dispose();
-
-
-	}
-
-	private void generatePegs() {
-
-		for (int i = 0; i < pegBodies.length; i++) {
-			String name = "peg" + i;
-			pegBodies[i] = createPegBody(name, 5, -50, 0, 0);
-			pegBodies[i].setUserData("peg");
-		}
-	}
-
-
-	/**
-	 * - - - - - - - - - - - -
-	 * <p>
-	 * Render section
-	 * <p>
-	 * * - - - - - - - - - - - -
-	 */
-
-	public void render(float delta) {
-		stepWorld();
-		Gdx.gl.glClearColor(0, 0, 0, 1);
-		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-		// mouse joint
-		mouseJointDef = new MouseJointDef();
-		mouseJointDef.bodyA = floor;
-		mouseJointDef.collideConnected = true;
-		mouseJointDef.frequencyHz = 2000;
-		mouseJointDef.maxForce = 1000;
-
-		debugRenderer.render(world, camera.combined);
-
-		if (bodiesForDeletion.size > 0) {
-			System.out.println("Bodies ready for deletion!");
-			world.destroyBody(bodiesForDeletion.first());
-			bodiesForDeletion.clear();
-		}
-
-		if (newDisc.size > 1) {
-			disc = createCircleBody("Disc", 20, camera.viewportWidth / 2, 450, 0);
-			platform = createPlatform("platform", initPlatform);
-			newDisc.clear();
-		}
-
-	}
-
-	@Override
-	public void resize(int width, int height) {
-
-		createWallL();
-		createWallR();
-
-
-	}
-
-	@Override
-	public void show() {
-		//TODO: Auto-Generated Method Stub
-
-	}
-
-	@Override
-	public void hide() {
-		//TODO: Auto-Generated Method Stub
-
-	}
-
-	@Override
-	public void pause() {
-		//TODO: Auto-Generated Method Stub
-
-	}
-
-	@Override
-	public void resume() {
-		//TODO: Auto-Generated Method Stub
-
-	}
-
-	@Override
-	public void dispose() {
-		//TODO: Auto-Generated Method Stub
-	}
-
-	/**
-	 * - - - - - - - - - - - - - - - - -
-	 * <p>
-	 * input processor for mouseJoint
-	 * <p>
-	 * * - - - - - - - - - - - - - - - - -
-	 */
-
-	QueryCallback queryCallBack = new QueryCallback() {
-		@Override
-		public boolean reportFixture(Fixture fixture) {
-			if (!fixture.testPoint(tmp.x, tmp.y)) {
-				return true;
-			}
-
-			mouseJointDef.bodyB = fixture.getBody();
-			mouseJointDef.target.set(tmp.x, tmp.y);
-			joint = (MouseJoint) world.createJoint(mouseJointDef);
-			return false;
-		}
-	};
-
-	@Override
-	public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-		Gdx.app.log(TAG, "touchDown Detected at: " + screenX + ", " + screenY);
-
-		camera.unproject(tmp.set(screenX, screenY, 0));
-		world.QueryAABB(queryCallBack, tmp.x, tmp.y, tmp.x, tmp.y);
-
-		worldGravity.set(0, -120);
-
-		return false;
-	}
-
-	@Override
-	public boolean touchDragged(int screenX, int screenY, int pointer) {
-		Gdx.app.log(TAG, "touchDrag Detected at: " + screenX + ", " + screenY);
-
-		if (joint == null)
-			return true;
-
-		camera.unproject(tmp.set(screenX, screenY, 0));
-		joint.setTarget(tmp2.set(tmp.x, tmp.y));
-
-		return true;
-	}
-
-	@Override
-	public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-		Gdx.app.log(TAG, "touchUp Detected at: " + screenX + ", " + screenY);
-		if (joint == null)
-			return false;
-		bodiesForDeletion.add(platform);
-		world.destroyJoint(joint);
-		return true;
-	}
+    @Override
+    public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        Gdx.app.log(TAG, "touchUp Detected at: " + screenX + ", " + screenY);
+        if (joint == null)
+            return false;
+        bodiesForDeletion.add(platform);
+        world.destroyJoint(joint);
+        joint = null;
+        return true;
+    }
 }

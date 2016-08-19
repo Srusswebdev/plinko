@@ -8,7 +8,6 @@ import com.robynrock.dropr.GameScreen;
 public class dropr extends Game {
     SpriteBatch batch;
 
-
     @Override
     public void create() {
         batch = new SpriteBatch();
